@@ -56,7 +56,7 @@ def gerar_mensagem(notas_cliente):
 st.title("Sistema de Envio de Notas Fiscais via WhatsApp")
 
 # Carrega os dados das notas fiscais
-df = pd.read_excel('notas_fiscais.xlsx')
+df = pd.read_excel('/Notas Fiscais.xlsx')
 
 # Converter a coluna 'Data Vencimento' para datetime e formatar para dd/mm/aaaa
 df['Data Vencimento'] = pd.to_datetime(df['Data Vencimento'], errors='coerce')
