@@ -5,6 +5,7 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 import time
 import re
+from datetime import datetime
 
 # Função para enviar mensagem via WhatsApp
 def enviar_whatsapp_link(numero_cliente, mensagem):
@@ -34,6 +35,16 @@ def enviar_whatsapp_link(numero_cliente, mensagem):
 # Função para buscar notas fiscais de um cliente
 def buscar_notas_cliente(cliente, df):
     todas_notas_cliente = df[df['EMPRESA'].astype(str).str.strip() == str(cliente).strip()]
+
+    # Converte a coluna VENCIMENTO para datetime se ainda não for
+    todas_notas_cliente['VENCIMENTO'] = pd.to_datetime(todas_notas_cliente['VENCIMENTO'], errors='coerce')
+
+    # Verifica a situação das notas
+    hoje = datetime.now()
+    todas_notas_cliente['SITUAÇÂO'] = todas_notas_cliente['VENCIMENTO'].apply(
+        lambda x: 'VENCIDA' if x < hoje else ('VENCE EM 7 DIAS' if (x - hoje).days <= 7 else 'NO PRAZO')
+    )
+    
     notas_abertas = todas_notas_cliente[todas_notas_cliente['SITUAÇÂO'] == 'VENCIDA']
     return todas_notas_cliente, notas_abertas
 
@@ -65,7 +76,7 @@ else:
 df.columns = df.columns.str.strip()
 
 # Converte a coluna VENCIMENTO para o formato de data e trata a coluna NF como texto
-df['VENCIMENTO'] = pd.to_datetime(df['VENCIMENTO'])
+df['VENCIMENTO'] = pd.to_datetime(df['VENCIMENTO'], errors='coerce')
 df['NF'] = df['NF'].astype(str)
 
 # Formata a coluna VENCIMENTO para o formato desejado
