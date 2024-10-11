@@ -1,121 +1,64 @@
 import streamlit as st
 import pandas as pd
-import urllib
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-import time
-import re
-from datetime import datetime
+import datetime
 
-# Função para enviar mensagem via WhatsApp
-def enviar_whatsapp_link(numero_cliente, mensagem):
-    try:
-        navegador = webdriver.Chrome()
-        navegador.get("https://web.whatsapp.com/")
-        st.info("Por favor, escaneie o QR code no WhatsApp Web.")
-        
-        while len(navegador.find_elements("id", "side")) < 1:
-            time.sleep(1)
-
-        texto = urllib.parse.quote(mensagem)
-        link = f"https://web.whatsapp.com/send?phone={numero_cliente}&text={texto}"
-        navegador.get(link)
-
-        while len(navegador.find_elements("id", "side")) < 1:
-            time.sleep(1)
-
-        # Envia a mensagem
-        navegador.find_element("xpath", '/html/body/div[1]/div/div/div[4]/div/footer/div[1]/div[2]/div/div[2]').send_keys(Keys.ENTER)
-        st.success(f"Mensagem enviada para o número {numero_cliente}")
-    except Exception as e:
-        st.error(f"Ocorreu um erro: {str(e)}")
-    finally:
-        navegador.quit()
-
-# Função para buscar notas fiscais de um cliente
-def buscar_notas_cliente(cliente, df):
-    todas_notas_cliente = df[df['EMPRESA'].astype(str).str.strip() == str(cliente).strip()]
-
-    # Converte a coluna VENCIMENTO para datetime se ainda não for
-    todas_notas_cliente['VENCIMENTO'] = pd.to_datetime(todas_notas_cliente['VENCIMENTO'], errors='coerce')
-
-    # Verifica a situação das notas
-    hoje = datetime.now()
-    todas_notas_cliente['SITUAÇÂO'] = todas_notas_cliente['VENCIMENTO'].apply(
-        lambda x: 'VENCIDA' if x < hoje else ('VENCE EM 7 DIAS' if (x - hoje).days <= 7 else 'NO PRAZO')
+# Função para atualizar a situação das notas com base na data de vencimento
+def atualizar_situacao(df):
+    hoje = datetime.datetime.now()
+    df['SITUAÇÂO'] = df['VENCIMENTO'].apply(
+        lambda x: 'VENCIDA' if x < hoje else 
+        ('VENCE EM 7 DIAS' if (x - hoje).days <= 7 else 'NO PRAZO')
     )
-    
-    notas_abertas = todas_notas_cliente[todas_notas_cliente['SITUAÇÂO'] == 'VENCIDA']
-    return todas_notas_cliente, notas_abertas
+    return df
 
-# Função para gerar mensagem a ser enviada
-def gerar_mensagem(notas_cliente):
-    mensagem = "Olá, seguem as notas fiscais em aberto:\n\n"
-    for index, nota in notas_cliente.iterrows():
-        mensagem += f"Nota Fiscal: {nota['NF']}\n"
-        mensagem += f"Itens: {nota['Itens']}\n"
-        mensagem += f"Quantidade: {nota['Quantidade']}\n"
-        mensagem += f"Valor: R${nota['Valor']}\n"
-        data_vencimento = nota['VENCIMENTO'].strftime('%d/%m/%Y')  # Formatação da data
-        mensagem += f"Data de Vencimento: {data_vencimento}\n\n"
-    return mensagem
+# Carrega os dados das notas fiscais
+df = pd.read_excel(r'G:/Drives compartilhados/FINANCEIRO (CONTAS A RECEBER)/Controle TLR/Notas Fiscais.xlsx')
+df.columns = df.columns.str.strip()  # Remove espaços em branco nos nomes das colunas
 
-# Título do aplicativo
-st.title("Sistema de Envio de Notas Fiscais via WhatsApp")
-
-# Caminho do arquivo
-caminho_arquivo = r'G:/Drives compartilhados/FINANCEIRO (CONTAS A RECEBER)/Controle TLR/Notas Fiscais.xlsx'
-
-# Botão para atualizar os dados
-if st.button("Atualizar Dados"):
-    df = pd.read_excel(caminho_arquivo)
-    st.success("Dados atualizados com sucesso!")
-else:
-    df = pd.read_excel(caminho_arquivo)
-
-df.columns = df.columns.str.strip()
-
-# Converte a coluna VENCIMENTO para o formato de data e trata a coluna NF como texto
-df['VENCIMENTO'] = pd.to_datetime(df['VENCIMENTO'], errors='coerce')
+# Converte a coluna VENCIMENTO para o formato de data
+df['VENCIMENTO'] = pd.to_datetime(df['VENCIMENTO'])
 df['NF'] = df['NF'].astype(str)
 
-# Formata a coluna VENCIMENTO para o formato desejado
-df['VENCIMENTO'] = df['VENCIMENTO'].dt.strftime('%d/%m/%Y')
+# Atualiza a situação das notas
+df = atualizar_situacao(df)
 
-# Define as colunas desejadas
-colunas_desejadas = ['EMPRESA', 'SITUAÇÂO', 'NF', 'VENCIMENTO']
+# Remove duplicatas para filtros
+clientes = df['EMPRESA'].drop_duplicates().tolist()
+filiais = df['FILIAL'].drop_duplicates().tolist()  # Supondo que há uma coluna FILIAL
+situacoes = df['SITUAÇÂO'].drop_duplicates().tolist()
 
-# Remove duplicatas e traz os valores únicos
-valores_unicos = df[colunas_desejadas].drop_duplicates()
+# Seleciona cliente, filial e situação
+cliente_selecionado = st.selectbox("Selecione o cliente", options=clientes)
+filial_selecionada = st.selectbox("Selecione a filial", options=filiais)
+situacao_selecionada = st.selectbox("Selecione a situação", options=situacoes)
 
-# Exibe os valores únicos
-st.write(valores_unicos.head())
+# Filtra as notas com base nos selecionados
+notas_cliente = df[
+    (df['EMPRESA'] == cliente_selecionado) & 
+    (df['FILIAL'] == filial_selecionada) & 
+    (df['SITUAÇÂO'] == situacao_selecionada)
+]
 
-# Seleção do cliente
-clientes = df['EMPRESA'].unique().tolist()
-cliente = st.selectbox("Selecione o cliente", options=clientes)
-
-if cliente:
-    todas_notas_cliente, notas_cliente = buscar_notas_cliente(cliente, df)
+# Exibe as notas filtradas
+if not notas_cliente.empty:
+    st.subheader("Notas Filtradas:")
     
-    if not todas_notas_cliente.empty:
-        # Remove duplicatas
-        todas_notas_cliente = todas_notas_cliente.drop_duplicates()
-        
-        st.dataframe(todas_notas_cliente[colunas_desejadas])  # Exibir apenas colunas desejadas
-        
-        if not notas_cliente.empty:
-            mensagem = gerar_mensagem(notas_cliente)
-            st.text_area("Mensagem Gerada", mensagem)
+    # Remove duplicatas ao exibir checkboxes
+    notas_cliente = notas_cliente.drop_duplicates(subset=['NF'])  # Mude o campo se necessário
+    notas_selecionadas = []
+    
+    for index, nota in notas_cliente.iterrows():
+        checkbox_key = f"nota_{index}"  # Chave única
+        if st.checkbox(f"Nota Fiscal: {nota['NF']} - Preço Final: R${nota['PRECO_FINAL']} - Venc.: {nota['VENCIMENTO'].strftime('%d/%m/%Y')}", key=checkbox_key):
+            notas_selecionadas.append(nota)
 
-            numero_cliente = st.text_input("Digite o número de WhatsApp do cliente (com DDI e DDD)")
-
-            if st.button("Enviar WhatsApp"):
-                if numero_cliente and re.match(r'^\+\d{1,3}\d{10}$', numero_cliente):
-                    enviar_whatsapp_link(numero_cliente, mensagem)
-                else:
-                    st.error("Por favor, insira um número de WhatsApp válido.")
-        else:
-            st.warning("Nenhuma nota fiscal em aberto.")
-    else:
-        st.warning(f"Nenhuma nota encontrada para o cliente: {cliente}.")
+    # Detalhes das notas selecionadas
+    if notas_selecionadas:
+        st.subheader("Detalhes das Notas Selecionadas:")
+        for nota in notas_selecionadas:
+            st.write(f"**Nota:** {nota['NF']}")
+            st.write(f"**Itens:** {nota['Itens']}")
+            st.write(f"**Quantidade:** {nota['Quantidade']}")
+            st.write(f"**Preço Final:** R${nota['PRECO_FINAL']}")
+else:
+    st.warning("Nenhuma nota encontrada para os filtros selecionados.")
