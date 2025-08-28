@@ -8,7 +8,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 import time
 
-# Configuração do Streamlit
+# Configurações do Streamlit
 st.set_page_config(page_title="Cobrança de Clientes", page_icon="💬")
 st.title("💬 Sistema de Cobrança via WhatsApp (Automático)")
 
@@ -33,51 +33,58 @@ if uploaded_file:
     if st.button("📤 Enviar mensagens pelo WhatsApp"):
         st.info("🔹 Abrindo o navegador... Escaneie o QR Code no WhatsApp Web se necessário.")
 
-        # Configurações do Chrome
-        chrome_options = Options()
-        chrome_options.add_argument("--start-maximized")
+        try:
+            # Configuração do Selenium
+            chrome_options = Options()
+            chrome_options.add_argument("--start-maximized")
 
-        driver = webdriver.Chrome(service=Service(), options=chrome_options)
-        driver.get("https://web.whatsapp.com/")
+            # Ajuste o caminho do chromedriver no seu PC
+            service = Service(r"C:\caminho\para\chromedriver.exe")
 
-        # Aguardar login
-        while len(driver.find_elements(By.ID, "side")) < 1:
-            st.warning("Escaneie o QR Code para continuar...")
-            time.sleep(2)
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver.get("https://web.whatsapp.com/")
 
-        st.success("✅ WhatsApp Web carregado!")
+            # Aguardar login
+            while len(driver.find_elements(By.ID, "side")) < 1:
+                st.warning("Escaneie o QR Code no WhatsApp Web...")
+                time.sleep(2)
 
-        # Agrupar por cliente
-        clientes = df.groupby('CÓD.')
-        for cod, dados_cliente in clientes:
-            nome_cliente = dados_cliente['CLIENTE'].iloc[0]
-            telefone = dados_cliente['TELEFONE'].iloc[0]
+            st.success("✅ WhatsApp Web carregado com sucesso!")
 
-            # Montar mensagem
-            texto = f"Olá {nome_cliente}, segue o resumo das suas notas fiscais pendentes:\n\n"
-            for _, row in dados_cliente.iterrows():
-                texto += (
-                    f"NF: {row['NF']}\n"
-                    f"Emissão: {row['EMISSÃO']}\n"
-                    f"Vencimento: {row['VENCIMENTO']}\n"
-                    f"Valor: {row['VALOR']}\n"
-                    f"Observação: {row['OBS']}\n\n"
-                )
-            texto += f"Atenciosamente,\n{dados_cliente['VENDEDOR'].iloc[0]}"
+            # Agrupar mensagens por cliente
+            clientes = df.groupby('CÓD.')
+            for cod, dados_cliente in clientes:
+                nome_cliente = dados_cliente['CLIENTE'].iloc[0]
+                telefone = dados_cliente['TELEFONE'].iloc[0]
 
-            # Abrir chat no WhatsApp
-            url = f"https://web.whatsapp.com/send?phone=55{telefone}&text={urllib.parse.quote(texto)}"
-            driver.get(url)
+                # Montar mensagem
+                texto = f"Olá {nome_cliente}, segue o resumo das suas notas fiscais pendentes:\n\n"
+                for _, row in dados_cliente.iterrows():
+                    texto += (
+                        f"NF: {row['NF']}\n"
+                        f"Emissão: {row['EMISSÃO']}\n"
+                        f"Vencimento: {row['VENCIMENTO']}\n"
+                        f"Valor: {row['VALOR']}\n"
+                        f"Observação: {row['OBS']}\n\n"
+                    )
+                texto += f"Atenciosamente,\n{dados_cliente['VENDEDOR'].iloc[0]}"
 
-            # Aguardar o campo de mensagem
-            time.sleep(8)
-            try:
-                campo_texto = driver.find_element(By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]')
-                campo_texto.send_keys(Keys.ENTER)
-                st.success(f"✅ Mensagem enviada para {nome_cliente} ({telefone})")
-            except:
-                st.error(f"❌ Falha ao enviar para {nome_cliente} ({telefone})")
+                # Abrir a conversa
+                url = f"https://web.whatsapp.com/send?phone=55{telefone}&text={urllib.parse.quote(texto)}"
+                driver.get(url)
+                time.sleep(8)
 
-            time.sleep(5)  # Pausa antes do próximo envio
+                # Enviar mensagem automaticamente
+                try:
+                    campo_texto = driver.find_element(By.XPATH, '//div[@contenteditable="true"][@data-tab="10"]')
+                    campo_texto.send_keys(Keys.ENTER)
+                    st.success(f"✅ Mensagem enviada para {nome_cliente} ({telefone})")
+                except:
+                    st.error(f"❌ Falha ao enviar para {nome_cliente} ({telefone})")
 
-        st.success("🎉 Todas as mensagens foram enviadas!")
+                time.sleep(5)
+
+            st.success("🎉 Todas as mensagens foram enviadas!")
+
+        except Exception as e:
+            st.error(f"⚠️ Erro ao iniciar o Selenium: {str(e)}")
